@@ -1,38 +1,105 @@
-const rows = 3;
-const cols = 3;
+let rows = 15;
+let cols = 15;
 let w;
 let cellSet = [];
+let path = [];
 let wall_list = [];
-let canvas, ctx, isBreadcumbVisible, IMG;
+let canvas, ctx, IMG;
 let removedWallSet = {};
-
+let player;
+let startPosition;
+let endPosition;
+let startIndex, endIndex;
+let previousTime = new Date();
+let first = true;
 let keyDown = {};
 let history = [];
+let isBreadcumbVisible = true;
+let isHintVisible = false;
+let isPathVisible = false;
+let score = 0;
+let gameOver = false;
+let scoreList = [];
+let playerImage;
+let destinationImage;
+
+let buttonDiv = document.getElementById("maze_size");
+
+buttonDiv.onclick = (event) => {
+  rows = event.srcElement.dataset.value;
+  cols = Number(rows);
+  rows = Number(rows);
+  first = true;
+  cellSet = [];
+  removedWallSet = {};
+  wall_list = [];
+  path = [];
+  history = [];
+  isBreadcumbVisible = true;
+  keyDown = {};
+  score = 0;
+  gameOver = false;
+  gameOverBoard.innerText = "";
+  gameLoop();
+};
+
 window.addEventListener("keydown", (e) => {
   let key = e.key;
+  if (key == "w" || key == "i" || key == "ArrowUp") {
+    key = "w";
+  }
+  if (key == "a" || key == "j" || key == "ArrowLeft") {
+    key = "a";
+  }
+  if (key == "s" || key == "k" || key == "ArrowDown") {
+    key = "s";
+  }
+  if (key == "d" || key == "l" || key == "ArrowRight") {
+    key = "d";
+  }
   keyDown[key] = true;
 });
 
 function processInput(elapsedTime) {
   if (keyDown.w && canMove("w") && player.y > 0) {
-    history.push({ x: player.x, y: player.y });
+    history.push({
+      x: player.x,
+      y: player.y,
+    });
     player.y = player.y - 1;
+    updateScore();
   }
   if (keyDown.a && canMove("a") && player.x > 0) {
-    history.push(player.x * cols + player.y);
+    history.push({ x: player.x, y: player.y });
     player.x = player.x - 1;
+    updateScore();
   }
   if (keyDown.s && canMove("s") && player.y < rows - 1) {
-    history.push({ x: player.x, y: player.y });
+    history.push({
+      x: player.x,
+      y: player.y,
+    });
     player.y = player.y + 1;
+    updateScore();
   }
   if (keyDown.d && canMove("d") && player.x < cols - 1) {
-    history.push({ x: player.x, y: player.y });
+    history.push({
+      x: player.x,
+      y: player.y,
+    });
     player.x = player.x + 1;
+    updateScore();
   }
   if (keyDown.b) {
     isBreadcumbVisible = !isBreadcumbVisible;
   }
+  if (keyDown.h) {
+    isHintVisible = !isHintVisible;
+  }
+  if (keyDown.p) {
+    isPathVisible = !isPathVisible;
+  }
+
   keyDown = {};
 }
 
@@ -80,19 +147,41 @@ function canMove(key) {
 }
 //[0, n)
 
-function drawPlayer() {
-  ctx.fillStyle = "rgba(0, 255, 0, 1)";
-  ctx.fillRect(player.x * w, player.y * w, w, w);
+function updateScore() {
+  let playerIndex = player.x + player.y * cols;
+  if (playerIndex != endIndex) {
+    let correctPosition =
+      path[path.length - 2].x + path[path.length - 2].y * cols;
+    if (playerIndex == correctPosition) {
+      score += 5;
+    } else {
+      score -= 2;
+    }
+  }
 }
 
-function showTrack(cellList) {
+function drawSprite() {
+  ctx.drawImage(playerImage, player.x * w, player.y * w, w, w);
+  ctx.drawImage(
+    destinationImage,
+    cellSet[0][endPosition].x * w,
+    cellSet[0][endPosition].y * w,
+    w,
+    w
+  );
+
+  // ctx.fillStyle = "rgba(0, 255, 0, 1)";
+  // ctx.fillRect(player.x * w, player.y * w, w, w);
+}
+
+function showTrack(cellList, color) {
   let centerX, centerY;
-  ctx.fillStyle = "#df7a12";
+  ctx.fillStyle = color;
   cellList.forEach((element, index) => {
     ctx.beginPath();
     centerX = element.x * w + w / 2;
     centerY = element.y * w + w / 2;
-    ctx.arc(centerX, centerY, w / 3, 2 * Math.PI, false);
+    ctx.arc(centerX, centerY, w / 4, 2 * Math.PI, false);
     ctx.fill();
   });
 }
@@ -119,69 +208,83 @@ function putBackground() {
 
 function render(time) {
   timeDiv.innerText = Math.floor(time / 1000) + " sec";
+  scoreBoard.innerText = score;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   // putBackground();
-  if (isBreadcumbVisible) {
-    showTrack(history);
+
+  drawStartAndEnd(startPosition, endPosition);
+  if (isPathVisible) {
+    showTrack(path, "#939ea0");
   }
-  drawPlayer();
-  drawStartAndEnd(startIndex, endIndex);
-  findShortestPath(startPosition, endPosition);
+  if (isBreadcumbVisible) {
+    showTrack(history, "#556611");
+  }
+  if (isHintVisible) {
+    if (path.length > 1) {
+      let hint = [path[path.length - 2]];
+      showTrack(hint, "#939ea0");
+    }
+  }
   show();
+  drawSprite();
+  scoreList.push(score);
+  if (gameOver) {
+    gameOverBoard.innerText = "You Won !!!!";
+    highscoreBoard.innerText = Math.max(...scoreList);
+  }
 }
 
 function drawStartAndEnd(startPosition, endPosition) {
-  let startY = Math.floor(startPosition / cols);
-  let startX = startPosition % cols;
+  let startX = cellSet[0][startPosition].x;
+  let startY = cellSet[0][startPosition].y;
+  let endX = cellSet[0][endPosition].x;
+  let endY = cellSet[0][endPosition].y;
 
-  console.log(startX, startY);
-  let endY = Math.floor(endPosition / cols);
-  let endX = endPosition % cols;
-  // let startX = cellSet[0][startPosition].x;
-  // let startY = cellSet[0][startPosition].y;
-  // let endX = cellSet[0][endPosition].x;
-  // let endY = cellSet[0][endPosition].y;
-
-  console.log(startPosition, endPosition);
-  console.log(startX, startY, endX, endY);
-
-  ctx.fillStyle = "rgba(255, 0, 0, 1)";
-  ctx.fillRect(endX * w, endY * w, w, w);
-
-  ctx.fillStyle = "rgba(0, 0, 0, 1)";
-  ctx.fillRect(startX * w, startY * w, w, w);
+  // ctx.drawImage(characterImage, startX.x * w, startY.y * w, w, w);
+  // ctx.fillStyle = "rgba(255, 0, 0, 1)";
+  // ctx.fillRect(endX * w, endY * w, w, w);
 }
 
 function findShortestLength(startIndex, endIndex) {
   let queue = [];
   let distances = new Array(rows * cols).fill(-1);
-  console.log(startIndex);
   queue.push(startIndex);
   distances[startIndex] = 0;
   let comb1, comb2;
   while (queue.length > 0) {
     let cellIndex = queue.shift();
-    let neighbours = [
-      cellIndex - 1,
-      cellIndex + 1,
-      cellIndex - cols,
-      cellIndex + cols,
-    ];
+    let neighbours = [cellIndex - cols, cellIndex + cols];
+    if (cellIndex % cols == 0) {
+      neighbours.push(cellIndex + 1);
+    } else if (cellIndex % cols == cols - 1) {
+      neighbours.push(cellIndex - 1);
+    } else {
+      neighbours.push(cellIndex + 1);
+      neighbours.push(cellIndex - 1);
+    }
 
-    neighbours.filter((element, index) => {
-      comb1 = element + "_" + cellIndex;
-      comb2 = cellIndex + "_" + element;
-      if (
-        (removedWallSet.hasOwnProperty(comb1) ||
-          removedWallSet.hasOwnProperty(comb2)) &&
-        element < rows &&
-        element < cols &&
-        element >= 0
-      ) {
-        console.log(comb1, comb2);
-        return true;
+    for (let i = 0; i < neighbours.length; i++) {
+      // console.log(
+      //   "index",
+      //   i,
+      //   neighbours[i],
+      //   comb1,
+      //   removedWallSet.hasOwnProperty(comb1),
+      //   comb2,
+      //   removedWallSet.hasOwnProperty(comb2)
+      // );
+
+      comb1 = neighbours[i] + "_" + cellIndex;
+      comb2 = cellIndex + "_" + neighbours[i];
+
+      if (!(removedWallSet[comb1] || removedWallSet[comb2])) {
+        neighbours.splice(i, 1);
+        i--;
+      } else if (!(neighbours[i] < rows * cols && neighbours[i] >= 0)) {
+        neighbours.splice(i, 1);
+        i--;
       }
-    });
+    }
 
     for (let i = 0; i < neighbours.length; i++) {
       if (distances[neighbours[i]] == -1) {
@@ -197,57 +300,56 @@ function findShortestLength(startIndex, endIndex) {
 
 function findShortestPath(startIndex, endIndex) {
   let distances = findShortestLength(startIndex, endIndex);
-  console.log(distances);
-  let currentIndex = endIndex;
-  let path = [endIndex];
+  let cellIndex = endIndex;
+  path.push(endIndex);
   let currentDistance = distances[endIndex];
-  console.log(startIndex, endIndex);
   while (currentDistance > 0) {
-    currentDistance = distances[currentIndex];
-    let neighbours = [
-      currentIndex - 1,
-      currentIndex + 1,
-      currentIndex - cols,
-      currentIndex + cols,
-    ];
+    currentDistance = distances[cellIndex];
+    let neighbours = [cellIndex - cols, cellIndex + cols];
+    if (cellIndex % cols == 0) {
+      neighbours.push(cellIndex + 1);
+    } else if (cellIndex % cols == cols - 1) {
+      neighbours.push(cellIndex - 1);
+    } else {
+      neighbours.push(cellIndex + 1);
+      neighbours.push(cellIndex - 1);
+    }
+    for (let i = 0; i < neighbours.length; i++) {
+      comb1 = neighbours[i] + "_" + cellIndex;
+      comb2 = cellIndex + "_" + neighbours[i];
 
-    neighbours.filter((element, index) => {
-      comb1 = element + "_" + currentIndex;
-      comb2 = currentIndex + "_" + element;
-      console.log(
-        comb1 +
-          "and" +
-          comb2 +
-          "doesnot have wall" +
+      if (
+        !(
           removedWallSet.hasOwnProperty(comb1) ||
           removedWallSet.hasOwnProperty(comb2)
-      );
-      return (
-        (removedWallSet.hasOwnProperty(comb1) ||
-          removedWallSet.hasOwnProperty(comb2)) &&
-        element < rows &&
-        element < cols &&
-        element >= 0
-      );
-    });
+        )
+      ) {
+        neighbours.splice(i, 1);
+        i--;
+      } else if (!(neighbours[i] < rows * cols && neighbours[i] >= 0)) {
+        neighbours.splice(i, 1);
+        i--;
+      }
+    }
 
+    currentDistance--;
     for (let i = 0; i < neighbours.length; i++) {
-      currentDistance--;
       if (distances[neighbours[i]] == currentDistance) {
         path.push(neighbours[i]);
         break;
       }
     }
-    currentIndex = path[path.length - 1];
+    cellIndex = path[path.length - 1];
   }
 
   for (let i = 0, length = path.length; i < length; i++) {
     let y = Math.floor(path[i] / cols);
     let x = path[i] % cols;
-    path[i] = { x, y };
+    path[i] = {
+      x,
+      y,
+    };
   }
-
-  showTrack(path);
 }
 
 function setup() {
@@ -262,10 +364,15 @@ function setup() {
   img.src = "./background.jpg";
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
-      cellSet.push([{ index: i * cols + j, x: i, y: j }]);
+      cellSet.push([
+        {
+          index: i + j * cols,
+          x: i,
+          y: j,
+        },
+      ]);
     }
   }
-
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
       let x0 = i;
@@ -360,7 +467,7 @@ function mazeGeneration() {
 
           if (cellSet[i][j].x == x0 && cellSet[i][j].y == y0) {
             found2Index = i;
-            cell1Index = cellSet[i][j].index;
+            cell2Index = cellSet[i][j].index;
           }
         }
       }
@@ -387,11 +494,20 @@ function mazeGeneration() {
   }
 }
 
+function update(time) {
+  let startIndex = player.x + player.y * cols;
+  path = [];
+  if (startIndex == endIndex) {
+    gameOver = true;
+    return;
+  }
+  findShortestPath(startIndex, endIndex);
+}
 function show() {
   for (let i = 0; i < wall_list.length; i++) {
     start = [wall_list[i].x0 * w, wall_list[i].y0 * w];
     end = [wall_list[i].x1 * w, wall_list[i].y1 * w];
-    drawLine(ctx, start, end, "white", 6);
+    drawLine(ctx, start, end, "#6b789e", 2);
   }
 }
 
@@ -410,50 +526,68 @@ function drawLine(ctx, begin, end, stroke = "white", width = 1) {
   ctx.stroke();
 }
 
-setup();
-mazeGeneration();
-show();
-
-let startPosition;
-let endPosition;
-
-do {
-  startPosition = randInt(cellSet[0].length);
-  endPosition = randInt(cellSet[0].length);
-} while (startPosition == endPosition);
-
-console.log(startPosition, endPosition);
-let startIndex = cellSet[0][startPosition].index;
-let endIndex = cellSet[0][endPosition].index;
-
-console.log("starting cell is " + startPosition + "end cell is " + endIndex);
-let trackValue = findShortestLength(startIndex, endIndex);
-
-console.log(startIndex);
-let playerY = Math.floor(startIndex / cols);
-let playerX = startIndex % cols;
-
-const player = {
-  x: playerX,
-  y: playerY,
-};
-
-console.log(player);
-ctx.fillStyle = "rgba(0, 255, 0, 1)";
-ctx.fillRect(player.x * w, player.y * w, w, w);
-
-let startingTime;
-let previousTime;
-let timeDiv = document.getElementById("elapsedTime");
-function gameLoop(currentTime) {
-  if (!startingTime) {
-    startingTime = currentTime;
-  }
-  let elapsedTime = currentTime - startingTime;
-  // update(elapsedTime);
-  processInput(elapsedTime);
-  render(elapsedTime);
-  // requestAnimationFrame(gameLoop);
+function spriteLoad() {
+  let characterURL = "./sprites/player.png";
+  let destinationURL = "./sprites/destination.png";
+  playerImage = new Image();
+  playerImage.src = characterURL;
+  destinationImage = new Image();
+  destinationImage.src = destinationURL;
+  playerImage.onload = function () {
+    ctx.drawImage(playerImage, player.x * w, player.y * w);
+  };
+  destinationImage.onload = function () {
+    console.log(cellSet[0][endPosition].x * w, cellSet[0][endPosition].y * w);
+    ctx.drawImage(
+      destinationImage,
+      cellSet[0][endPosition].x * w,
+      cellSet[0][endPosition].y * w,
+      w,
+      w
+    );
+  };
 }
 
-gameLoop();
+function init() {
+  setup();
+  mazeGeneration();
+  do {
+    startPosition = randInt(cellSet[0].length);
+    endPosition = randInt(cellSet[0].length);
+  } while (startPosition == endPosition);
+
+  spriteLoad();
+
+  startIndex = cellSet[0][startPosition].index;
+  endIndex = cellSet[0][endPosition].index;
+
+  let trackValue = findShortestLength(startIndex, endIndex);
+
+  player = {
+    x: cellSet[0][startPosition].x,
+    y: cellSet[0][startPosition].y,
+  };
+
+  findShortestPath(startIndex, endIndex);
+}
+
+let timeDiv = document.getElementById("elapsedTime");
+let scoreBoard = document.getElementById("scoreBoard");
+
+let highscoreBoard = document.getElementById("highscoreBoard");
+let gameOverBoard = document.getElementById("gamOverBoard");
+
+function gameLoop(timeStamp) {
+  if (first) {
+    first = false;
+    init();
+  }
+  let elapsedTime = timeStamp - lastRender;
+  processInput(elapsedTime);
+  update(elapsedTime);
+  render(elapsedTime);
+  if (!gameOver) {
+    requestAnimationFrame(gameLoop);
+  }
+}
+let lastRender = 0;
